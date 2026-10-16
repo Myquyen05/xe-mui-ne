@@ -9,8 +9,10 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
+    sqlite3 \
+    libsqlite3-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_mysql zip intl bcmath gd opcache
+    && docker-php-ext-install pdo pdo_mysql pdo_sqlite zip intl bcmath gd opcache
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
@@ -25,11 +27,15 @@ RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
 WORKDIR /var/www/html
 COPY . .
 
-# Chạy cài đặt các gói thư viện Laravel (thêm cờ bỏ qua kiểm tra phụ thuộc hệ thống)
+# Chạy cài đặt các gói thư viện
 RUN composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs
 
-# Phân quyền thư mục ghi cho Laravel
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+# Tạo file SQLite và cấp quyền đầy đủ cho web server
+RUN touch database/database.sqlite && \
+    chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database && \
+    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database
 
 EXPOSE 80
-CMD ["apache2-foreground"]
+
+# Chạy migrate bảng trước khi khởi động Apache
+CMD php artisan migrate --force && apache2-foreground
